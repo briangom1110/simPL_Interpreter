@@ -1,63 +1,96 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any
 
-class Expression: 
+class Expression:
     pass
 
+# literals
+
+@dataclass
 class IntegerLiteral(Expression):
-    value : int
+    value: int
 
-class Variable(Expression): 
-    name : str
+@dataclass
+class BooleanLiteral(Expression):
+    value: bool
 
-class BooleanLiteral(Expression): 
-    value : bool
-
-class Ref(Expression): 
-    expr : Expression
-
-class Func(Expression): 
-    param : str
-    body : Expression
-
-class Recursive(Expression): 
-    name : str
-    body : Expression
-
-class emptyList (Expression): 
+@dataclass
+class NilLiteral(Expression):
     pass
 
-class Pair(Expression):
-    left : Expression
-    right : Expression
+@dataclass
+class UnitLiteral(Expression):
+    pass
 
+#  Vars
+
+@dataclass
+class Var(Expression):
+    name: str
+
+# Operations
+
+@dataclass
 class UnaryOperation(Expression):
-    op : str
-    expr : Expression
+    op: str
+    expr: Expression
 
-class BinaryOperation(Expression): 
-    op : str
-    left : Expression
-    right : Expression
 
-class Let(Expression): 
-    name : str
-    value : Expression
-    body : Expression
+@dataclass
+class BinaryOperation(Expression):
+    op: str
+    left: Expression
+    right: Expression
 
-class If (Expression): 
+# application and fucntion
+@dataclass
+class Func(Expression):
+    param: str
+    body: Expression
 
-    condition : Expression
-    then : Expression
-    body : Expression
 
-class While (Expression): 
+@dataclass
+class Apply(Expression):
+    func: Expression
+    arg: Expression
+
+
+@dataclass
+class Rec(Expression):
+    name: str
+    body: Expression
+
+# pairs, refs, control
+@dataclass
+class Pair(Expression):
+    left: Expression
+    right: Expression
+
+
+@dataclass
+class Ref(Expression):
+    expr: Expression
+
+@dataclass
+class Let(Expression):
+    name: str
+    value: Expression
+    body: Expression
+
+
+@dataclass
+class If(Expression):
     condition: Expression
-    body : Expression
+    then_branch: Expression
+    else_branch: Expression
 
-class Grouping (Expression): 
-    expr : Expression
 
-class UnitLiteral(Expression): 
-    pass
+@dataclass
+class While(Expression):
+    condition: Expression
+    body: Expression
 
+# WHy is this acting weird
+@dataclass
+class Builtin(Expression):
+    fn: callable

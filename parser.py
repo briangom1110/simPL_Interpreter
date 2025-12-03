@@ -1,181 +1,250 @@
-class Parser: 
+import abstract
+from lexigraphical import Lexer, Token
 
-    def __init__ (self, lexigraphical):
-        self.lexegraphical = lexigraphical
-        self.tok = lexigraphical.next()
+class Parser:
+    def __init__(self, lexer: Lexer):
+        self.lexer = lexer
+        self.tok: Token = self.lexer.next_token()
 
-    def eat(self, type): 
-        if self.tok.type == type: 
-            self.tok = self.lexegraphical.next()
+    def error(self, msg="syntax error"):
+        raise Exception(msg)
 
-        else: 
-            raise Exception('Syntax Error')
+    def eat(self, expected_type: str):
+        if self.tok.type == expected_type:
+            self.tok = self.lexer.next_token()
+        else:
+            raise Exception("Syntax Error")
 
-    def parse_seq(self): 
+    def starts_atom(self, ttype: str) -> bool:
+        return ttype in (
+            "INT", "TRUE", "FALSE", "NIL", "ID", "LPAREN", "FN", "REC", "REF", "NEG", "NOT", "BANG", )
+
+
+    #  Work on parse function and any additional 
+    def parse(self):
+        expr = self.parse_seq()
+        if self.tok.type != "EOF":
+            raise Exception("Syntax Error")
+        return expr
+
+    # Operator precedence needs to be maintained as in pdf 
+
+    # sequence e1 ; e2
+    def parse_seq(self):
         expr = self.parse_assign()
-        while self.tok.type == 'SEMI': 
-            self.eat('SEMI')
+        while self.tok.type == "SEMI":
+
+            self.eat("SEMI")
             right = self.parse_assign()
-            expr = BinaryOperation(';', expr, right)
+            expr = abstract.BinaryOperation(";", expr, right)
+
         return expr
 
-    def parse_assign(self): 
+    # assign e1 := e2
+    def parse_assign(self):
         expr = self.parse_orelse()
-        if self.tok.type == 'ASSIGN': 
-            self.eat('ASSIGN')
+        if self.tok.type == "ASSIGN":
+            self.eat("ASSIGN")
             rhs = self.parse_orelse()
-            return BinaryOperation(':=', expr, rhs)
+            return abstract.BinaryOperation(":=", expr, rhs)
+
         return expr
 
+    # orelse, e1 orelse e2
     def parse_orelse(self):
         expr = self.parse_andalso()
-        while self.tok.type == 'ORELSE':
-            op = 'orelse'
-            self.eat('orelse')
+        while self.tok.type == "ORELSE":
+            self.eat("ORELSE")
             rhs = self.parse_andalso()
-            expr = BinaryOperation(op, expr, rhs)
+            expr = abstract.BinaryOperation("orelse", expr, rhs)
+
         return expr
 
+    # e1 andalso e2
     def parse_andalso(self):
-        expr = self.compare()
-        while self.tok.type == 'ANDALSO': 
-            op = 'andalso'
-            self.eat('ANDALSO')
-            rhs = self.compare()
-            expr = BinaryOperation(op, expr, rhs)
+        expr = self.parse_compare()
+        while self.tok.type == "ANDALSO":
 
+            self.eat("ANDALSO")
+            rhs = self.parse_compare()
+            expr = abstract.BinaryOperation("andalso", expr, rhs)
         return expr
-    
-    def compare (self): 
+
+    # comparisons
+    def parse_compare(self):
         expr = self.parse_cons()
-        while self.tok.type in ('EQ', 'NEQ', 'LT', 'LTEQ', 'GTEQ', 'GT'):
-            op = self.tok.type.lower()
+        while self.tok.type in ("EQ", "NEQ", "LT", "LTEQ", "GT", "GTEQ"):
+            op_map = {
+                "EQ": "=", "NEQ": "<>", "LT": "<", "LTEQ": "<=", "GT": ">", "GTEQ": ">=", }
+
+            op = op_map[self.tok.type]
             self.eat(self.tok.type)
             rhs = self.parse_cons()
-
-            expr = BinaryOperation(op, expr, rhs)
+            expr = abstract.BinaryOperation(op, expr, rhs)
         return expr
 
+    # construct  e1 :: e2
     def parse_cons(self):
         expr = self.parse_add()
-        while self.tok.type == 'CONS':
-            self.eat('CONS')
-            rhs = self.parse_add()
-            expr = BinaryOperation('::', expr, rhs)
-        
+        if self.tok.type == "CONS":
+            self.eat("CONS")
+            rhs = self.parse_cons()
+            expr = abstract.BinaryOperation("::", expr, rhs)
         return expr
 
-    # do parse_add next 
-    def parse_add(self): 
+    # Math implementation, add, sub, div, mult, mod
+
+    def parse_add(self):
+
         expr = self.parse_multiply()
-        while self.tok.type in ('PLUS', 'MINUS'):
-            op = '+' if self.tok.type == 'PLUS' else '-'
+        while self.tok.type in ("PLUS", "MINUS"):
+            op = "+" if self.tok.type == "PLUS" else "-"
             self.eat(self.tok.type)
-            rhs = self.parse_null()
-
-            expr = BinaryOperation(op, expr, rhs)
-        
+            rhs = self.parse_multiply()
+            expr = abstract.BinaryOperation(op, expr, rhs)
         return expr
+
 
     def parse_multiply(self):
         expr = self.parse_app()
-        while self.tok.type in ('TIMES', 'DIV', 'MOD'):
-            op = {'TIMES': '*', 'DIV': '/', 'MOD' : '%'}[self.tok.type]
-            
+        while self.tok.type in ("TIMES", "DIV", "MOD"):
+            op_map = {"TIMES": "*", "DIV": "/", "MOD": "%"}
+            op = op_map[self.tok.type]
             self.eat(self.tok.type)
             rhs = self.parse_app()
-            expr = BinaryOperation(op, expr, rhs)
-        
-        return expr 
+            expr = abstract.BinaryOperation(op, expr, rhs)
+        return expr
 
-    def parse_app(self): 
+    # application: e1 e2
+    def parse_app(self):
         expr = self.parse_unary()
         while self.starts_atom(self.tok.type):
             rhs = self.parse_unary()
-            expr = apply(expr, rhs)
+            expr = abstract.Apply(expr, rhs)
+        return expr
 
-        return expr 
+    # unary operations
+    def parse_unary(self):
+        t = self.tok.type
 
-    def parse_unary(self): 
-        if self.tok.type in ('NEG', 'NOT', 'BANG'):
-            op = {'NEG' : '~', 'NOT': 'not', 'BANG' : '!'}[self.tok.type]
-            self.eat(self.tok.type)
-            return UnaryOperation(op, self.parse_unary())
+        if t in ("NEG", "NOT", "BANG"):
+            op_map = {"NEG": "~", "NOT": "not", "BANG": "!"}
+            op = op_map[t]
+            self.eat(t)
+            return abstract.UnaryOperation(op, self.parse_unary())
+
+        if t == "REF":
+            self.eat("REF")
+            expr = self.parse_unary()
+            return abstract.Ref(expr)
 
         return self.parse_atom()
 
-    def parse_atom(self): 
-        atom = self.tok.type
+    # atoms
+    def parse_atom(self):
+        t = self.tok.type
 
-        if atom == 'INT': 
-            val = self.tok.value
-            self.eat('INT')
-            return IntegerLiteral(val)
+        # literals
+        if t == "INT":
+            v = self.tok.value
+            self.eat("INT")
+            return abstract.IntegerLiteral(v)
 
-        if atom == 'TRUE':
-            self.eat('TRUE')
-            return BooleanLiteral(True)
+        if t == "TRUE":
+            self.eat("TRUE")
+            return abstract.BooleanLiteral(True)
 
-        if atom == 'FALSE':
-            self.eat('FALSE')
-            return BooleanLiteral(False)
+        if t == "FALSE":
+            self.eat("FALSE")
+            return abstract.BooleanLiteral(False)
 
-        if atom == 'ID': 
+        if t == "NIL":
+            self.eat("NIL")
+            return abstract.NilLiteral()
+
+        # variables
+        if t == "ID":
             name = self.tok.value
-            self.eat('ID')
-            return Var(name)
+            self.eat("ID")
+            return abstract.Var(name)
 
-        if atom == 'LPAREN':
-            self.eat('LPAREN')
+        # parentheses
+        if t == "LPAREN":
+            self.eat("LPAREN")
 
+            # unit ()
+            if self.tok.type == "RPAREN":
+                self.eat("RPAREN")
+                return abstract.UnitLiteral()
+
+            # parse one expression
             expr = self.parse_seq()
-            if self.tok.type == 'COMMA':
-                self.eat('COMMA')
+
+            # possibly pair (e1, e2)
+            if self.tok.type == "COMMA":
+                self.eat("COMMA")
                 rhs = self.parse_seq()
-                self.eat('RPAREN')
-                return Pair(expr, rhs)
-            self.eat('RPAREN')
+                self.eat("RPAREN")
+                return abstract.Pair(expr, rhs)
+
+            self.eat("RPAREN")
             return expr
 
-        if atom == 'FN':
-            self.eat('FN')
+        # fn x => e
+        if t == "FN":
+            self.eat("FN")
+            if self.tok.type != "ID":
+
+                # Syntax error found if this runs 
+                raise Exception("Syntax Error")
             param = self.tok.value
-            self.eat('ID')
-            self.eat('ARROW')
+            self.eat("ID")
+            self.eat("ARROW")
             body = self.parse_seq()
-            return Func(param, body)
+            return abstract.Func(param, body)
 
-        if atom == 'REC':
-            self.eat('REC')
+        # rec x => e
+        if t == "REC":
+            self.eat("REC")
+            if self.tok.type != "ID":
+                raise Exception("Syntax Error")
             name = self.tok.value
-            self.eat('ID')
-            self.eat('ARROW')
+            self.eat("ID")
+            self.eat("ARROW")
             body = self.parse_seq()
-            return Rec(name, body)
+            return abstract.Rec(name, body)
 
+        # let x = e1 in e2 end
         if t == "LET":
+
             self.eat("LET")
+            if self.tok.type != "ID":
+                raise Exception("Syntax Error")
             name = self.tok.value
             self.eat("ID")
             self.eat("EQ")
-            val = self.parse_sequence()
+            val = self.parse_seq()
             self.eat("IN")
-            body = self.parse_sequence()
+            body = self.parse_seq()
             self.eat("END")
-            return Let(name, val, body)
+            return abstract.Let(name, val, body)
 
+        # if e1 then e2 else e3
         if t == "IF":
             self.eat("IF")
-            cond = self.parse_sequence()
+            cond = self.parse_seq()
             self.eat("THEN")
-            then_e = self.parse_sequence()
+            then = self.parse_seq()
             self.eat("ELSE")
-            else_e = self.parse_sequence()
-            return If(cond, then_e, else_e)
+            els = self.parse_seq()
+            return abstract.If(cond, then, els)
 
+        # while e1 do e2
         if t == "WHILE":
             self.eat("WHILE")
-            cond = self.parse_sequence()
+            # condition can be any expression
+            cond = self.parse_seq()
             self.eat("DO")
-            body = self.parse_sequence()
-            return While(cond, body)
+            body = self.parse_assign()
+            return abstract.While(cond, body)
+

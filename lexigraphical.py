@@ -1,136 +1,136 @@
 from dataclasses import dataclass
 
 @dataclass
-class Token: 
-    tyep: str
-    value: any
+class Token:
+    type: str
+    value: any = None
 
-KEYWORDS = { 'nil', 'ref'
-            , 'fn', 'rec'
-            , 'let', 'in', 'end'
-            , 'if', 'then', 'else'
-            , 'while', 'do'
-            , 'true', 'false'
-            , 'not', 'andalso', 'orelse'}
-
-OPPERATORS = { '+', '-', '*', '/', '%', '~', '=', 
-                '<', '>', '!', '(', ')', ',', ';'}
-
-class lex: 
-    def __init__ (self, text):
+class Lexer:
+    def __init__(self, text):
         self.text = text
         self.pos = 0
         self.length = len(text)
 
-    # View input 
-    def peek(self, offset = 0):
-        if self.pos + offset < self.length:
-            return self.text[self.pos + offset]
+        # keywords in SimPL lang
+        self.KEYWORDS = {
+            "let": "LET", "in": "IN", "end": "END", "fn": "FN","rec": "REC", "if": "IF", "then": "THEN",
+            "else": "ELSE", "while": "WHILE", "do": "DO", "true": "TRUE", "false": "FALSE", "nil": "NIL", "not": "NOT",
+            "andalso": "ANDALSO","orelse": "ORELSE", "ref": "REF",
+        }
+
+    def peek(self, n=0):
+        if self.pos + n < self.length:
+            return self.text[self.pos + n]
         return None
 
-    # Skip certain token
-    def go_next(self, n = 1): 
+    def advance(self, n=1):
         self.pos += n
-    
-    # If the current token is whitespace, ignore (go_next)
-    def whitespace(self): 
+
+    def skip_whitespace(self):
         while self.peek() is not None and self.peek().isspace():
-            self.go_next()
+            self.advance()
 
-    # If the current token is a comment, ignore (go_next)
-    def comment(self): 
-        self.go_next(2)
-        nest_count = 1
+    # Work on comment
+    def skip_comment(self):
 
-        while nest_count > 0: 
-            curr = self.peek()
+        self.advance(2)
+        depth = 1
 
-            # Nested comment detection
-            if curr == '(' and self.peek(1) == '*':
-                nest += 1
-                self.go_next(2)
-
-            elif curr == '*' and self.peek(1) == ')':
-                nest -= 1
-                self.advance(2)
-            
-            # If the comment isn't closed, raise an exception
-            elif curr is None: 
+        # Checks for nested comments
+        while depth > 0:
+            c = self.peek()
+            if c is None:
                 raise Exception("Syntax Error")
 
+            if c == "(" and self.peek(1) == "*":
+                depth += 1
+                self.advance(2)
+            elif c == "*" and self.peek(1) == ")":
+                depth -= 1
+                self.advance(2)
             else:
                 self.advance()
 
-    # 2.2 Atoms, integer literals 
-    def integer(self): 
-        first_digit = self.pos
-        leading_zeroes = 0
-        lead = True
+    # 2.2 Atoms
+
+    def integer(self):
+        start = self.pos
         while self.peek() is not None and self.peek().isdigit():
-            if int(self.peek()) is 0 and lead:
-                leading_zeroes += 1
-
-            else:
-                lead = False
-
-            self.go_next()
-
+            self.advance()
         value = int(self.text[start:self.pos])
-        return Token('INT', value)
+        return Token("INT", value)
 
-    def identifiers(self): 
-        first_char = self.pos
-        curr = self.peek()
+    def identifier(self):
+        start = self.pos
+        while self.peek() and (self.peek().isalnum() or self.peek() in "_’"):
+            self.advance()
+        name = self.text[start:self.pos]
+        if name in self.KEYWORDS:
+            return Token(self.KEYWORDS[name])
+        return Token("ID", name)
 
-        if curr.isdigit():
-            raise Exception("Syntax Error")
-        
-        while self.peek() and (self.peek().isalnum() or self.peek() in '_'):
-            self.go_next()
 
-        id_name = self.text[first_char:self.pos()]
-        return Token('ID', id_name)
 
-    def next(self_tok):
-        self.whitespace()
+    def next_token(self):
+        self.skip_whitespace()
 
-        curr = self.peek()
+        c = self.peek()
+        if c is None:
+            return Token("EOF")
 
-        if curr is None: 
-            return Token('EOF')
+        # comments
+        if c == "(" and self.peek(1) == "*":
+            self.skip_comment()
+            return self.next_token()
 
-        if curr == '(' and self.peek(1) == '*': 
-            self.comment()
-            return self.next()
-
-        if curr.isdigit(): 
+        # integer
+        if c.isdigit():
             return self.integer()
 
-        if curr.isalpha() or c == '_':  # isalpha() checks if it is an alphabetic char
-            return self.identifiers()
+        # identifier
+        if c.isalpha() or c == "_":
+            return self.identifier()
 
-        if curr == '<' and self.peek(1) == '=': 
-            self.go_next(2)
-            return Token('LTEQ')
+        # :: 
+        if c == ":" and self.peek(1) == ":":
+            self.advance(2)
+            return Token("CONS")
 
-        if curr == '<' and self.peek(1) == '>':
-            self.go_next(2)
-            return Token('NEQ')
+        # := 
+        if c == ":" and self.peek(1) == "=":
+            self.advance(2)
+            return Token("ASSIGN")
 
-        if curr == '=' and self.peek(1) == '>':
-            self.go_next(2)
-            return Token('ARROW')
+        # <=
+        if c == "<" and self.peek(1) == "=":
+            self.advance(2)
+            return Token("LTEQ")
 
-        if curr == ':' and self.peek(1) == ':':
-            self.go_next(2)
-            return Token('CONS')
+        # <>
+        if c == "<" and self.peek(1) == ">":
+            self.advance(2)
+            return Token("NEQ")
 
-        if curr == ':' and self.peek(1) == '=':
-            self.go_next(2)
-            return Token('ASSIGNMENT')
+        # >=
+        if c == ">" and self.peek(1) == "=":
+            self.advance(2)
+            return Token("GTEQ")
 
-        if curr in OPPERATORS:
-            self.go_next()
-            return Token(OPPERATORS[curr])
+        # =>
+        if c == "=" and self.peek(1) == ">":
+            self.advance(2)
+            return Token("ARROW")
 
-            
+        single_char = {
+            "+": "PLUS", "-": "MINUS", "*": "TIMES", "/": "DIV", "%": "MOD", "~": "NEG",
+            "=": "EQ", "<": "LT", ">": "GT", "!": "BANG", "(": "LPAREN", ")": "RPAREN",
+            ",": "COMMA", ";": "SEMI"
+        }
+
+        if c in single_char:
+            tok_type = single_char[c]
+            self.advance()
+            return Token(tok_type)
+
+        # Unknown char
+        raise Exception("Syntax Error")
